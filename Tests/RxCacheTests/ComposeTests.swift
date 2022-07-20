@@ -1,7 +1,7 @@
+@testable import RxCache
 import RxSwift
 import RxTest
 import XCTest
-@testable import RxCache
 
 final class ComposeTests: XCTestCase {
 	func testAssetInFirst() {

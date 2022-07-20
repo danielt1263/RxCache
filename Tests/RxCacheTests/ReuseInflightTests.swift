@@ -1,7 +1,7 @@
+@testable import RxCache
 import RxSwift
 import RxTest
 import XCTest
-@testable import RxCache
 
 final class ReuseInflightTests: XCTestCase {
 	var scheduler: TestScheduler!
@@ -11,7 +11,7 @@ final class ReuseInflightTests: XCTestCase {
 	var getCallCount: Int = 0
 	var setCallCount: Int = 0
 	var fakeCache: Cache<String, String>!
-	var sut: ((String) -> Observable<String>)!
+	var sut: Cache<String, String>!
 
 	override func setUp() {
 		scheduler = TestScheduler(initialClock: 0)
@@ -30,16 +30,16 @@ final class ReuseInflightTests: XCTestCase {
 			}
 		)
 
-		sut = reuseInflightGet(inner: fakeCache.get(key:))
+		sut = fakeCache.reuseInflight()
 	}
 
 	func testPoolsCalls() {
-		sut("hello")
+		sut.get(key: "hello")
 			.subscribe(sink1)
 			.disposed(by: disposeBag)
 
 		scheduler.scheduleAt(2) {
-			self.sut("hello")
+			self.sut.get(key: "hello")
 				.subscribe(self.sink2)
 				.disposed(by: self.disposeBag)
 		}
@@ -51,12 +51,12 @@ final class ReuseInflightTests: XCTestCase {
 	}
 
 	func testOnlyPoolsIncompleteCalls() {
-		sut("hello")
+		sut.get(key: "hello")
 			.subscribe(sink1)
 			.disposed(by: disposeBag)
 
 		scheduler.scheduleAt(5) {
-			self.sut("hello")
+			self.sut.get(key: "hello")
 				.subscribe(self.sink2)
 				.disposed(by: self.disposeBag)
 		}
@@ -68,12 +68,12 @@ final class ReuseInflightTests: XCTestCase {
 	}
 
 	func testRaceConditionReturnsValue() {
-		sut("hello")
+		sut.get(key: "hello")
 			.subscribe(sink1)
 			.disposed(by: disposeBag)
 
 		scheduler.scheduleAt(4) {
-			self.sut("hello")
+			self.sut.get(key: "hello")
 				.subscribe(self.sink2)
 				.disposed(by: self.disposeBag)
 		}
@@ -85,11 +85,11 @@ final class ReuseInflightTests: XCTestCase {
 	}
 
 	func testDifferentKeys() {
-		sut("hello")
+		sut.get(key: "hello")
 			.subscribe(sink1)
 			.disposed(by: disposeBag)
 
-		sut("world")
+		sut.get(key: "world")
 			.subscribe(sink2)
 			.disposed(by: disposeBag)
 

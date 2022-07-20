@@ -13,11 +13,5 @@ public final class NetworkCache: CacheType {
 		data(key)
 	}
 
-	public func set(key: URLRequest, value: Data) -> Observable<Void> {
-		precondition(key.httpMethod != "GET")
-		var request = key
-		request.httpBody = value
-		return data(key)
-			.map { _ in }
-	}
+	public func set(key: URLRequest, value: Data) -> Observable<Void> { .just(()) }
 }
