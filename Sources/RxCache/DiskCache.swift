@@ -1,4 +1,10 @@
-import CommonCrypto
+//
+//  DiskCache.swift
+//
+//  Created by Daniel Tartaglia on 20 Jul 2022.
+//  Copyright © 2022 Daniel Tartaglia. MIT License.
+//
+
 import Foundation
 import RxSwift
 
@@ -6,8 +12,8 @@ public final class DiskCache<Key>: CacheType where Key: CustomStringConvertible 
 	let directory: URL
 	let scheduler: SchedulerType
 
-	public init(directory: FileURL, scheduler: SchedulerType) {
-		self.directory = directory.rawValue
+	public init(directory: URL, scheduler: SchedulerType) {
+		self.directory = directory
 		self.scheduler = scheduler
 	}
 
@@ -29,14 +35,5 @@ public final class DiskCache<Key>: CacheType where Key: CustomStringConvertible 
 			return .just(try value.write(to: url))
 		}
 		.subscribe(on: scheduler)
-	}
-}
-
-public struct FileURL: RawRepresentable {
-	public let rawValue: URL
-
-	public init?(rawValue: URL) {
-		guard rawValue.scheme == "file" else { return nil }
-		self.rawValue = rawValue
 	}
 }

@@ -1,4 +1,11 @@
-@testable import RxCache
+//
+//  DiskCacheTests.swift
+//
+//  Created by Daniel Tartaglia on 20 Jul 2022.
+//  Copyright © 2022 Daniel Tartaglia. MIT License.
+//
+
+import RxCache
 import RxSwift
 import RxTest
 import XCTest
@@ -6,7 +13,7 @@ import XCTest
 final class DiskCacheTests: XCTestCase {
 	func testEmitsErrorWhenMissingData() {
 		let scheduler = TestScheduler(initialClock: 0)
-		guard let tempDirectory = FileURL(rawValue: FileManager.default.temporaryDirectory) else { XCTFail(); return }
+		let tempDirectory = FileManager.default.temporaryDirectory
 		let sut = DiskCache<String>(directory: tempDirectory, scheduler: scheduler)
 		let filename = UUID().uuidString
 		let result = scheduler.start {
@@ -20,7 +27,7 @@ final class DiskCacheTests: XCTestCase {
 	func testEmitsStoredValue() {
 		let scheduler = TestScheduler(initialClock: 0)
 		let disposeBag = DisposeBag()
-		guard let tempDirectory = FileURL(rawValue: FileManager.default.temporaryDirectory) else { XCTFail(); return }
+		let tempDirectory = FileManager.default.temporaryDirectory
 		let sut = DiskCache<String>(directory: tempDirectory, scheduler: scheduler)
 		let filename = UUID().uuidString
 

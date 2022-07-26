@@ -1,4 +1,11 @@
-@testable import RxCache
+//
+//  ReuseInflightTests.swift
+//
+//  Created by Daniel Tartaglia on 20 Jul 2022.
+//  Copyright © 2022 Daniel Tartaglia. MIT License.
+//
+
+import RxCache
 import RxSwift
 import RxTest
 import XCTest
@@ -6,28 +13,28 @@ import XCTest
 final class ReuseInflightTests: XCTestCase {
 	var scheduler: TestScheduler!
 	var disposeBag: DisposeBag!
-	var sink1: TestableObserver<String>!
-	var sink2: TestableObserver<String>!
-	var getCallCount: Int = 0
-	var setCallCount: Int = 0
+	var result1: TestableObserver<String>!
+	var result2: TestableObserver<String>!
+	var getParam: TestableObserver<String>!
+	var setParam: TestableObserver<Pair<String, String>>!
 	var fakeCache: Cache<String, String>!
 	var sut: Cache<String, String>!
 
 	override func setUp() {
 		scheduler = TestScheduler(initialClock: 0)
 		disposeBag = DisposeBag()
-		sink1 = scheduler.createObserver(String.self)
-		sink2 = scheduler.createObserver(String.self)
-		getCallCount = 0
+		result1 = scheduler.createObserver(String.self)
+		result2 = scheduler.createObserver(String.self)
+		getParam = scheduler.createObserver(String.self)
+		setParam = scheduler.createObserver(Pair<String, String>.self)
+		let getMock = scheduler.mock(
+			args: getParam,
+			timelineSelector: { param in param == "hello" ? "---A-|" : "---B-|" }
+		)
+		let setMock = scheduler.mock(args: setParam, values: ["A": ()], timelineSelector: { _ in "---A|"})
 		fakeCache = Cache<String, String>(
-			get: { _ in
-				self.getCallCount += 1
-				return Observable.just("count \(self.getCallCount)").delay(.seconds(3), scheduler: self.scheduler)
-			},
-			set: { _, _ in
-				self.setCallCount += 1
-				return Observable.just(())
-			}
+			get: getMock,
+			set: { setMock(Pair(left: $0, right: $1)) }
 		)
 
 		sut = fakeCache.reuseInflight()
@@ -35,68 +42,68 @@ final class ReuseInflightTests: XCTestCase {
 
 	func testPoolsCalls() {
 		sut.get(key: "hello")
-			.subscribe(sink1)
+			.subscribe(result1)
 			.disposed(by: disposeBag)
 
 		scheduler.scheduleAt(2) {
 			self.sut.get(key: "hello")
-				.subscribe(self.sink2)
+				.subscribe(self.result2)
 				.disposed(by: self.disposeBag)
 		}
 		scheduler.start()
 
-		XCTAssertEqual(getCallCount, 1)
-		XCTAssertEqual(sink1.events.count, 2)
-		XCTAssertEqual(sink1.events, sink2.events)
-	}
-
-	func testOnlyPoolsIncompleteCalls() {
-		sut.get(key: "hello")
-			.subscribe(sink1)
-			.disposed(by: disposeBag)
-
-		scheduler.scheduleAt(5) {
-			self.sut.get(key: "hello")
-				.subscribe(self.sink2)
-				.disposed(by: self.disposeBag)
-		}
-		scheduler.start()
-
-		XCTAssertEqual(getCallCount, 2)
-		XCTAssertEqual(sink1.events, [.next(3, "count 1"), .completed(4)])
-		XCTAssertEqual(sink2.events, [.next(8, "count 2"), .completed(9)])
+		XCTAssertEqual(getParam.events, [.next(0, "hello")])
+		XCTAssertEqual(result1.events, [.next(3, "A"), .completed(4)])
+		XCTAssertEqual(result2.events, [.next(3, "A"), .completed(4)])
 	}
 
 	func testRaceConditionReturnsValue() {
 		sut.get(key: "hello")
-			.subscribe(sink1)
+			.subscribe(result1)
 			.disposed(by: disposeBag)
 
-		scheduler.scheduleAt(4) {
+		scheduler.scheduleAt(3) {
 			self.sut.get(key: "hello")
-				.subscribe(self.sink2)
+				.subscribe(self.result2)
 				.disposed(by: self.disposeBag)
 		}
 		scheduler.start()
 
-		XCTAssertEqual(getCallCount, 1)
-		XCTAssertEqual(sink1.events, [.next(3, "count 1"), .completed(4)])
-		XCTAssertEqual(sink2.events, [.next(4, "count 1"), .completed(4)])
+		XCTAssertEqual(getParam.events, [.next(0, "hello")])
+		XCTAssertEqual(result1.events, [.next(3, "A"), .completed(4)])
+		XCTAssertEqual(result2.events, [.next(3, "A"), .completed(4)])
+	}
+
+	func testOnlyPoolsIncompleteCalls() {
+		sut.get(key: "hello")
+			.subscribe(result1)
+			.disposed(by: disposeBag)
+
+		scheduler.scheduleAt(4) {
+			self.sut.get(key: "hello")
+				.subscribe(self.result2)
+				.disposed(by: self.disposeBag)
+		}
+		scheduler.start()
+
+		XCTAssertEqual(getParam.events, [.next(0, "hello"), .next(4, "hello")])
+		XCTAssertEqual(result1.events, [.next(3, "A"), .completed(4)])
+		XCTAssertEqual(result2.events, [.next(7, "A"), .completed(8)])
 	}
 
 	func testDifferentKeys() {
 		sut.get(key: "hello")
-			.subscribe(sink1)
+			.subscribe(result1)
 			.disposed(by: disposeBag)
 
 		sut.get(key: "world")
-			.subscribe(sink2)
+			.subscribe(result2)
 			.disposed(by: disposeBag)
 
 		scheduler.start()
 
-		XCTAssertEqual(sink1.events, [.next(3, "count 1"), .completed(4)])
-		XCTAssertEqual(sink2.events, [.next(3, "count 2"), .completed(4)])
+		XCTAssertEqual(getParam.events, [.next(0, "hello"), .next(0, "world")])
+		XCTAssertEqual(result1.events, [.next(3, "A"), .completed(4)])
+		XCTAssertEqual(result2.events, [.next(3, "B"), .completed(4)])
 	}
 }
-

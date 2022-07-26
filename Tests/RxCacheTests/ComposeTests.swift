@@ -1,4 +1,11 @@
-@testable import RxCache
+//
+//  ComposeTests.swift
+//
+//  Created by Daniel Tartaglia on 20 Jul 2022.
+//  Copyright © 2022 Daniel Tartaglia. MIT License.
+//
+
+import RxCache
 import RxSwift
 import RxTest
 import XCTest
@@ -6,13 +13,15 @@ import XCTest
 final class ComposeTests: XCTestCase {
 	func testAssetInFirst() {
 		let scheduler = TestScheduler(initialClock: 0)
+		let cacheAGetParams = scheduler.createObserver(String.self)
+		let getAMock = scheduler.mock(args: cacheAGetParams, timelineSelector: { _ in "-A|" })
 		let cacheA = Cache<String, String>(
-			get: { _ in .just("hello") },
-			set: { _, _ in XCTFail(); return .just(()) }
+			get: getAMock,
+			set: { _, _ in XCTFail("Should not call this."); return .just(()) }
 		)
 		let cacheB = Cache<String, String>(
-			get: { _ in XCTFail(); return .just("") },
-			set: { _, _ in XCTFail(); return .just(()) }
+			get: { _ in XCTFail("Should not call this."); return .just("") },
+			set: { _, _ in XCTFail("Should not call this."); return .just(()) }
 		)
 
 		let sut = compose(cacheA, cacheB)
@@ -21,19 +30,25 @@ final class ComposeTests: XCTestCase {
 			sut.get(key: "key")
 		}
 
-		XCTAssertEqual(result.events, [.next(200, "hello"), .completed(200)])
+		XCTAssertEqual(cacheAGetParams.events, [.next(100, "key")])
+		XCTAssertEqual(result.events, [.next(201, "A"), .completed(201)])
 	}
 
 	func testAssetInSecond() {
 		let scheduler = TestScheduler(initialClock: 0)
-		var setACalled = false
+		let cacheAGetParams = scheduler.createObserver(String.self)
+		let cacheASetParams = scheduler.createObserver(Pair<String, String>.self)
+		let getAMock = scheduler.mock(args: cacheAGetParams, timelineSelector: { _ in "-#" })
+		let setAMock = scheduler.mock(args: cacheASetParams, values: ["A": ()], timelineSelector: { _ in "-A|" })
 		let cacheA = Cache<String, String>(
-			get: { _ in .error(TestError.getA) },
-			set: { _, _ in setACalled = true; return .just(()) }
+			get: getAMock,
+			set: { setAMock(Pair(left: $0, right: $1)) }
 		)
+		let cacheBGetParams = scheduler.createObserver(String.self)
+		let getBMock = scheduler.mock(args: cacheBGetParams, timelineSelector: { _ in "-B|" })
 		let cacheB = Cache<String, String>(
-			get: { _ in .just("goodbye") },
-			set: { _, _ in XCTFail(); return .just(()) }
+			get: getBMock,
+			set: { _, _ in XCTFail("Should not call this."); return .just(()) }
 		)
 
 		let sut = compose(cacheA, cacheB)
@@ -42,19 +57,26 @@ final class ComposeTests: XCTestCase {
 			sut.get(key: "key")
 		}
 
-		XCTAssertTrue(setACalled)
-		XCTAssertEqual(result.events, [.next(200, "goodbye"), .completed(200)])
+		XCTAssertEqual(cacheAGetParams.events, [.next(100, "key")])
+		XCTAssertEqual(cacheASetParams.events, [.next(202, Pair(left: "key", right: "B"))])
+		XCTAssertEqual(cacheBGetParams.events, [.next(201, "key")])
+		XCTAssertEqual(result.events, [.next(202, "B"), .completed(203)])
 	}
 
 	func testAssetMissing() {
 		let scheduler = TestScheduler(initialClock: 0)
+		let cacheAGetParams = scheduler.createObserver(String.self)
+		let getAMock = scheduler.mock(args: cacheAGetParams, timelineSelector: { _ in "-#" })
 		let cacheA = Cache<String, String>(
-			get: { _ in .error(TestError.getA) },
-			set: { _, _ in XCTFail(); return .just(()) }
+			get: getAMock,
+			set: { _, _ in XCTFail("Should not call this."); return .just(()) }
 		)
+
+		let cacheBGetParams = scheduler.createObserver(String.self)
+		let getBMock = scheduler.mock(args: cacheBGetParams, timelineSelector: { _ in "-#" })
 		let cacheB = Cache<String, String>(
-			get: { _ in .error(TestError.getB) },
-			set: { _, _ in XCTFail(); return .just(()) }
+			get: getBMock,
+			set: { _, _ in XCTFail("Should not call this."); return .just(()) }
 		)
 
 		let sut = compose(cacheA, cacheB)
@@ -63,18 +85,27 @@ final class ComposeTests: XCTestCase {
 			sut.get(key: "key")
 		}
 
-		XCTAssertEqual(result.events, [.error(200, CacheError.multiple(TestError.getA, TestError.getB))])
+		let expectedError = NSError(domain: "Test Domain", code: -1)
+		XCTAssertEqual(cacheAGetParams.events, [.next(100, "key")])
+		XCTAssertEqual(cacheBGetParams.events, [.next(201, "key")])
+		XCTAssertEqual(result.events, [.error(202, CacheError.multiple(expectedError, expectedError))])
 	}
 
 	func testSetFailure() {
 		let scheduler = TestScheduler(initialClock: 0)
+		let cacheAGetParams = scheduler.createObserver(String.self)
+		let getAMock = scheduler.mock(args: cacheAGetParams, timelineSelector: { _ in "-#" })
+		let cacheASetParams = scheduler.createObserver(Pair<String, String>.self)
+		let setAMock = scheduler.mock(args: cacheASetParams, values: ["X": ()], timelineSelector: { _ in "-#" })
 		let cacheA = Cache<String, String>(
-			get: { _ in .error(TestError.getA) },
-			set: { _, _ in .error(TestError.setA) }
+			get: getAMock,
+			set: { setAMock(Pair(left: $0, right: $1)) }
 		)
+		let cacheBGetParams = scheduler.createObserver(String.self)
+		let getBMock = scheduler.mock(args: cacheBGetParams, timelineSelector: { _ in "-B" })
 		let cacheB = Cache<String, String>(
-			get: { _ in .just("goodbye") },
-			set: { _, _ in XCTFail(); return .just(()) }
+			get: getBMock,
+			set: { _, _ in XCTFail("Should not call this."); return .just(()) }
 		)
 
 		let sut = compose(cacheA, cacheB)
@@ -83,20 +114,26 @@ final class ComposeTests: XCTestCase {
 			sut.get(key: "key")
 		}
 
-		XCTAssertEqual(result.events, [.next(200, "goodbye"), .error(200, CacheError.multiple(TestError.getA, TestError.setA))])
+		let expectedError = NSError(domain: "Test Domain", code: -1)
+		XCTAssertEqual(cacheAGetParams.events, [.next(100, "key")])
+		XCTAssertEqual(cacheASetParams.events, [.next(202, Pair(left: "key", right: "B"))])
+		XCTAssertEqual(cacheBGetParams.events, [.next(201, "key")])
+		XCTAssertEqual(result.events, [.next(202, "B"), .error(203, CacheError.multiple(expectedError, expectedError))])
 	}
 
 	func testSetBoth() {
 		let scheduler = TestScheduler(initialClock: 0)
-		var setACalled = false
-		var setBCalled = false
+		let cacheASetParams = scheduler.createObserver(Pair<String, String>.self)
+		let setAMock = scheduler.mock(args: cacheASetParams, values: ["A": ()], timelineSelector: { _ in "-A|" })
 		let cacheA = Cache<String, String>(
-			get: { _ in XCTFail(); return .just("") },
-			set: { _, _ in setACalled = true; return .just(()) }
+			get: { _ in XCTFail("Should not call this."); return .just("") },
+			set: { setAMock(Pair(left: $0, right: $1)) }
 		)
+		let cacheBSetParams = scheduler.createObserver(Pair<String, String>.self)
+		let setBMock = scheduler.mock(args: cacheBSetParams, values: ["B": ()], timelineSelector: { _ in "-B|" })
 		let cacheB = Cache<String, String>(
-			get: { _ in XCTFail(); return .just("") },
-			set: { _, _ in setBCalled = true; return .just(()) }
+			get: { _ in XCTFail("Should not call this."); return .just("") },
+			set: { setBMock(Pair(left: $0, right: $1)) }
 		)
 
 		let sut = compose(cacheA, cacheB)
@@ -106,14 +143,8 @@ final class ComposeTests: XCTestCase {
 				.map { _ in true }
 		}
 
-		XCTAssertTrue(setACalled)
-		XCTAssertTrue(setBCalled)
-		XCTAssertEqual(result.events, [.next(200, true), .completed(200)])
+		XCTAssertEqual(cacheASetParams.events, [.next(100, Pair(left: "key", right: "value"))])
+		XCTAssertEqual(cacheBSetParams.events, [.next(100, Pair(left: "key", right: "value"))])
+		XCTAssertEqual(result.events, [.next(201, true), .completed(201)])
 	}
-}
-
-enum TestError: Error {
-	case getA
-	case getB
-	case setA
 }
