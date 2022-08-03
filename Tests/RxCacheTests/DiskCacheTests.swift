@@ -13,7 +13,7 @@ import XCTest
 final class DiskCacheTests: XCTestCase {
 	func testEmitsErrorWhenMissingData() {
 		let scheduler = TestScheduler(initialClock: 0)
-		let tempDirectory = FileManager.default.temporaryDirectory
+		let tempDirectory = findTemporaryDirectory()
 		let sut = DiskCache<String>(directory: tempDirectory, scheduler: scheduler)
 		let filename = UUID().uuidString
 		let result = scheduler.start {
@@ -27,7 +27,7 @@ final class DiskCacheTests: XCTestCase {
 	func testEmitsStoredValue() {
 		let scheduler = TestScheduler(initialClock: 0)
 		let disposeBag = DisposeBag()
-		let tempDirectory = FileManager.default.temporaryDirectory
+		let tempDirectory = findTemporaryDirectory()
 		let sut = DiskCache<String>(directory: tempDirectory, scheduler: scheduler)
 		let filename = UUID().uuidString
 
@@ -40,6 +40,14 @@ final class DiskCacheTests: XCTestCase {
 		}
 
 		XCTAssertEqual(result.events, [.next(201, Data()), .completed(201)])
+	}
+}
+
+func findTemporaryDirectory() -> URL {
+	if #available(iOS 10.0, *) {
+		return FileManager.default.temporaryDirectory
+	} else {
+		return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
 	}
 }
 

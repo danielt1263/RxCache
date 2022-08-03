@@ -5,9 +5,7 @@ import PackageDescription
 
 let package = Package(
 	name: "RxCache",
-	platforms: [
-		.iOS(.v13),
-	],
+	platforms: [.iOS(.v9), .macOS(.v10_10), .watchOS(.v3), .tvOS(.v9)],
 	products: [
 		.library(
 			name: "RxCache",
