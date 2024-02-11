@@ -3,7 +3,7 @@ Pod::Spec.new do |spec|
   spec.version       = "0.1.0"
   spec.summary       = "A caching library."
   spec.homepage      = "https://github.com/danielt1263/RxCache"
-  spec.license       = "MIT"
+  spec.license       = { :type => "MIT", :file => "LICENSE.txt" }
   spec.author        = { "Daniel Tartaglia" => "danielt1263@gmail.com" }
   spec.ios.deployment_target = '9.0'
   spec.osx.deployment_target = '10.9'

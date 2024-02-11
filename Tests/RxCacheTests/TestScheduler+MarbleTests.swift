@@ -2,7 +2,7 @@
 //  TestScheduler+MarbleTests.swift
 //
 //  Created by Daniel Tartaglia on 31 October 2021.
-//  Copyright © 2022 Daniel Tartaglia. All rights reserved.
+//  Copyright © 2024 Daniel Tartaglia. All rights reserved.
 //
 
 import Foundation

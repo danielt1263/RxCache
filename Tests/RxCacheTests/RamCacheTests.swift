@@ -2,7 +2,7 @@
 //  RamCacheTests.swift
 //
 //  Created by Daniel Tartaglia on 20 Jul 2022.
-//  Copyright © 2022 Daniel Tartaglia. MIT License.
+//  Copyright © 2024 Daniel Tartaglia. MIT License.
 //
 
 import RxCache
@@ -19,7 +19,7 @@ final class RamCacheTests: XCTestCase {
 			sut.get(key: "hello")
 		}
 
-		XCTAssertEqual(result.events, [.error(200, CacheError.ram)])
+		XCTAssertEqual(result.events, [.error(200, CacheError.valueNotInCache)])
 	}
 
 	func testEmitsStoredValue() {

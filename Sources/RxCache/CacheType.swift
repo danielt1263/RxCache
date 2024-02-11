@@ -2,7 +2,7 @@
 //  CacheType.swift
 //
 //  Created by Daniel Tartaglia on 20 Jul 2022.
-//  Copyright © 2022 Daniel Tartaglia. MIT License.
+//  Copyright © 2024 Daniel Tartaglia. MIT License.
 //
 
 import Foundation
@@ -41,9 +41,23 @@ extension CacheType {
 	}
 
 	public func reuseInflight() -> Cache<Key, Value> where Key: Hashable {
-		return Cache(
-			get: InflightReuser(inner: self.get(key:)).get(key:),
-			set: self.set(key:value:)
+		Cache(
+			get: reuseInFlight(inner: get(key:)),
+			set: set(key:value:)
+		)
+	}
+
+	public func reuseInflight() -> Cache<Key, Value> where Key: Equatable {
+		Cache(
+			get: reuseInFlight(inner: get(key:)),
+			set: set(key:value:)
+		)
+	}
+
+	public func reuseInflight() -> Cache<Key, Value> where Key == Void {
+		Cache(
+			get: reuseInFlight(inner: get(key:)),
+			set: set(key:value:)
 		)
 	}
 }
@@ -52,11 +66,14 @@ public func compose<A, B>(_ first: A, _ second: B) -> Cache<A.Key, A.Value>
 where A: CacheType, B: CacheType, A.Key == B.Key, A.Value == B.Value {
 	Cache(
 		get: { key in
-			first.get(key: key).catch { errorA in
-				second.get(key: key).flatMap { value in
-					Observable.zip(first.set(key: key, value: value).startWith(()), Observable.just(value)) { $1 }
-				}.catch { throw CacheError.multiple(errorA, $0) }
-			}
+			first.get(key: key)
+				.catch { errorA in
+					second.get(key: key)
+						.flatMap { value in
+							Observable.zip(first.set(key: key, value: value).startWith(()), Observable.just(value)) { $1 }
+						}
+						.catch { throw CacheError.multiple(errorA, $0) }
+				}
 		},
 		set: { key, value in
 			Observable.zip(first.set(key: key, value: value), second.set(key: key, value: value)) { _, _ in }
@@ -67,19 +84,14 @@ where A: CacheType, B: CacheType, A.Key == B.Key, A.Value == B.Value {
 public enum CacheError: Error {
 	case multiple(Error, Error)
 	case identity
-	case ram
+	case valueNotInCache
 }
 
-final class InflightReuser<Key, Value> where Key: Hashable {
-	let inner: (Key) -> Observable<Value>
+func reuseInFlight<Key, Value>(inner: @escaping (Key) -> Observable<Value>) -> (Key) -> Observable<Value>
+where Key: Hashable {
 	let lock = NSRecursiveLock()
-	private(set) var gets = [Key: Observable<Value>]()
-
-	init(inner: @escaping (Key) -> Observable<Value>) {
-		self.inner = inner
-	}
-
-	func get(key: Key) -> Observable<Value> {
+	var gets = [Key: Observable<Value>]()
+	return { key in
 		lock.lock(); defer { lock.unlock() }
 		if let result = gets[key] {
 			return result
@@ -87,10 +99,51 @@ final class InflightReuser<Key, Value> where Key: Hashable {
 
 		let result = inner(key).do(onDispose: { [lock] in
 			lock.lock(); defer { lock.unlock() }
-			self.gets.removeValue(forKey: key)
-		}).share(replay: 1)
+			gets.removeValue(forKey: key)
+		})
+			.share(replay: 1)
 
 		gets[key] = result
+		return result
+	}
+}
+
+func reuseInFlight<Key, Value>(inner: @escaping (Key) -> Observable<Value>) -> (Key) -> Observable<Value>
+where Key: Equatable {
+	let lock = NSRecursiveLock()
+	var gets = [(Key, Observable<Value>)]()
+	return { key in
+		lock.lock(); defer { lock.unlock() }
+		if let result = gets.first(where: { $0.0 == key })?.1 {
+			return result
+		}
+
+		let result = inner(key).do(onDispose: { [lock] in
+			lock.lock(); defer { lock.unlock() }
+			let index = gets.firstIndex(where: { $0.0 == key })!
+			gets.remove(at: index)
+		}).share(replay: 1)
+
+		gets.append((key, result))
+		return result
+	}
+}
+
+func reuseInFlight<Value>(inner: @escaping (()) -> Observable<Value>) -> (()) -> Observable<Value> {
+	let lock = NSRecursiveLock()
+	var get: Observable<Value>?
+	return { _ in
+		lock.lock(); defer { lock.unlock() }
+		if let result = get {
+			return result
+		}
+
+		let result = inner(()).do(onDispose: { [lock] in
+			lock.lock(); defer { lock.unlock() }
+			get = nil
+		}).share(replay: 1)
+
+		get = result
 		return result
 	}
 }

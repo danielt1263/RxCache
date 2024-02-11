@@ -2,7 +2,7 @@
 //  DiskCache.swift
 //
 //  Created by Daniel Tartaglia on 20 Jul 2022.
-//  Copyright © 2022 Daniel Tartaglia. MIT License.
+//  Copyright © 2024 Daniel Tartaglia. MIT License.
 //
 
 import Foundation
