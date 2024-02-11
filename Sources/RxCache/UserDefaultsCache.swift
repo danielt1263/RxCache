@@ -8,25 +8,24 @@
 import Foundation
 import RxSwift
 
-public final class UserDefaultsCache<Key, Value>: CacheType where Key: CustomStringConvertible, Value: Codable {
-
+public final class UserDefaultsCache<Key>: CacheType where Key: CustomStringConvertible {
 	private let defaults: UserDefaults
 
 	init(defaults: UserDefaults) {
 		self.defaults = defaults
 	}
 
-	public func get(key: Key) -> RxSwift.Observable<Value> {
+	public func get(key: Key) -> Observable<Data> {
 		.deferred { [defaults] in
-			guard let data = defaults.data(forKey: key.description) else { throw CacheError.valueNotInCache }
-			return .just(try JSONDecoder().decode(Value.self, from: data))
+			guard let data = defaults.data(forKey: key.description)
+			else { throw CacheError.valueNotInCache }
+			return .just(data)
 		}
 	}
 
-	public func set(key: Key, value: Value) -> RxSwift.Observable<Void> {
+	public func set(key: Key, value: Data) -> Observable<Void> {
 		.deferred { [defaults] in
-			let data = try JSONEncoder().encode(value)
-			defaults.setValue(data, forKey: key.description)
+			defaults.setValue(value, forKey: key.description)
 			return .just(())
 		}
 	}

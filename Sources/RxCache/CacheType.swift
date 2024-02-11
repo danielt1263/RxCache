@@ -42,41 +42,42 @@ extension CacheType {
 
 	public func reuseInflight() -> Cache<Key, Value> where Key: Hashable {
 		Cache(
-			get: reuseInFlight(inner: get(key:)),
+			get: RxCache.reuseInFlight(inner: get(key:)),
 			set: set(key:value:)
 		)
 	}
 
 	public func reuseInflight() -> Cache<Key, Value> where Key: Equatable {
-		Cache(
-			get: reuseInFlight(inner: get(key:)),
-			set: set(key:value:)
-		)
+		reuseInFlight(comp: { $0 == $1 })
 	}
 
 	public func reuseInflight() -> Cache<Key, Value> where Key == Void {
+		reuseInFlight(comp: { _, _ in true })
+	}
+
+	public func reuseInFlight(comp: @escaping (Key, Key) -> Bool) -> Cache<Key, Value> {
 		Cache(
-			get: reuseInFlight(inner: get(key:)),
+			get: RxCache.reuseInFlight(comp: comp, inner: get(key:)),
 			set: set(key:value:)
 		)
 	}
 }
 
-public func compose<A, B>(_ first: A, _ second: B) -> Cache<A.Key, A.Value>
+public func compose<A, B>(_ lhs: A, _ rhs: B) -> Cache<A.Key, A.Value>
 where A: CacheType, B: CacheType, A.Key == B.Key, A.Value == B.Value {
 	Cache(
 		get: { key in
-			first.get(key: key)
-				.catch { errorA in
-					second.get(key: key)
+			lhs.get(key: key)
+				.catch { lhsError in
+					rhs.get(key: key)
 						.flatMap { value in
-							Observable.zip(first.set(key: key, value: value).startWith(()), Observable.just(value)) { $1 }
+							Observable.zip(lhs.set(key: key, value: value).startWith(()), Observable.just(value)) { $1 }
 						}
-						.catch { throw CacheError.multiple(errorA, $0) }
+						.catch { throw CacheError.multiple(lhsError, $0) }
 				}
 		},
 		set: { key, value in
-			Observable.zip(first.set(key: key, value: value), second.set(key: key, value: value)) { _, _ in }
+			Observable.zip(lhs.set(key: key, value: value), rhs.set(key: key, value: value)) { _, _ in }
 		}
 	)
 }
@@ -108,42 +109,24 @@ where Key: Hashable {
 	}
 }
 
-func reuseInFlight<Key, Value>(inner: @escaping (Key) -> Observable<Value>) -> (Key) -> Observable<Value>
-where Key: Equatable {
+func reuseInFlight<Key, Value>(comp: @escaping (Key, Key) -> Bool, inner: @escaping (Key) -> Observable<Value>) -> (Key) -> Observable<Value> {
 	let lock = NSRecursiveLock()
 	var gets = [(Key, Observable<Value>)]()
 	return { key in
 		lock.lock(); defer { lock.unlock() }
-		if let result = gets.first(where: { $0.0 == key })?.1 {
+		if let result = gets.first(where: { comp($0.0, key) })?.1 {
 			return result
 		}
 
 		let result = inner(key).do(onDispose: { [lock] in
 			lock.lock(); defer { lock.unlock() }
-			let index = gets.firstIndex(where: { $0.0 == key })!
-			gets.remove(at: index)
-		}).share(replay: 1)
+			if let index = gets.firstIndex(where: { comp($0.0, key) }) {
+				gets.remove(at: index)
+			}
+		})
+			.share(replay: 1)
 
 		gets.append((key, result))
-		return result
-	}
-}
-
-func reuseInFlight<Value>(inner: @escaping (()) -> Observable<Value>) -> (()) -> Observable<Value> {
-	let lock = NSRecursiveLock()
-	var get: Observable<Value>?
-	return { _ in
-		lock.lock(); defer { lock.unlock() }
-		if let result = get {
-			return result
-		}
-
-		let result = inner(()).do(onDispose: { [lock] in
-			lock.lock(); defer { lock.unlock() }
-			get = nil
-		}).share(replay: 1)
-
-		get = result
 		return result
 	}
 }
